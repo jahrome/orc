@@ -24,7 +24,8 @@ liborc_@ORC_MAJORMINOR@_la_SOURCES = \
 	orcopcodes.c \
 	orcparse.c \
 	orconce.c \
-	orcdebug.c
+	orcdebug.c \
+	orccode.c
 
 if ENABLE_BACKEND_SSE
 liborc_@ORC_MAJORMINOR@_la_SOURCES += orcsse.c orcrules-sse.c orcprogram-sse.c
@@ -100,4 +101,5 @@ update: generate-emulation
 	$(top_builddir)/tools/orcc$(EXEEXT) --implementation -o orcfunctions.c orcfunctions.orc
 	$(top_builddir)/tools/orcc$(EXEEXT) --header -o orcfunctions.h orcfunctions.orc
 	./generate-emulation$(EXEEXT) -o orcemulateopcodes.c
+	./generate-emulation$(EXEEXT) --header -o orcemulateopcodes.h
 	

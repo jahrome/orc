@@ -18,9 +18,10 @@ typedef struct _OrcRuleSet OrcRuleSet;
 typedef struct _OrcConstant OrcConstant;
 typedef struct _OrcFixup OrcFixup;
 typedef struct _OrcTarget OrcTarget;
+typedef struct _OrcCode OrcCode;
 
 typedef void (*OrcOpcodeEmulateFunc)(OrcOpcodeExecutor *ex, void *user);
-typedef void (*OrcOpcodeEmulateNFunc)(OrcOpcodeExecutor *ex, int n);
+typedef void (*OrcOpcodeEmulateNFunc)(OrcOpcodeExecutor *ex, int index, int n);
 typedef void (*OrcOpcodeEmulate16Func)(OrcOpcodeExecutor *ex);
 typedef void (*OrcRuleEmitFunc)(OrcCompiler *p, void *user, OrcInstruction *insn);
 typedef void (*OrcExecutorFunc)(OrcExecutor *ex);
@@ -30,7 +31,7 @@ typedef void (*OrcExecutorFunc)(OrcExecutor *ex);
 #define ORC_N_VARIABLES 64
 #define ORC_N_ARRAYS 12
 #define ORC_N_REGISTERS 20
-#define ORC_N_FIXUPS 40
+#define ORC_N_FIXUPS 100
 #define ORC_N_CONSTANTS 20
 #define ORC_N_LABELS 40
 #define ORC_N_COMPILER_VARIABLES (ORC_N_VARIABLES+32)
@@ -45,6 +46,8 @@ typedef void (*OrcExecutorFunc)(OrcExecutor *ex);
 #define ORC_OPCODE_N_ARGS 4
 #define ORC_N_TARGETS 10
 #define ORC_N_RULE_SETS 10
+
+#define ORC_MAX_VAR_SIZE 8
 
 #define ORC_STRUCT_OFFSET(struct_type, member)    \
       ((long) ((unsigned int *) &((struct_type*) 0)->member))
@@ -268,12 +271,11 @@ struct _OrcOpcodeSet {
 #define ORC_STATIC_OPCODE_LOAD (1<<4)
 #define ORC_STATIC_OPCODE_STORE (1<<5)
 #define ORC_STATIC_OPCODE_INVARIANT (1<<6)
+#define ORC_STATIC_OPCODE_ITERATOR (1<<7)
 
 
 struct _OrcStaticOpcode {
   char name[16];
-  OrcOpcodeEmulateFunc emulate;
-  void *emulate_user;
   unsigned int flags;
   int dest_size[ORC_STATIC_OPCODE_N_DEST];
   int src_size[ORC_STATIC_OPCODE_N_SRC];
@@ -292,7 +294,15 @@ struct _OrcInstruction {
   int src_args[ORC_STATIC_OPCODE_N_SRC];
 
   OrcRule *rule;
+  unsigned int flags;
 };
+
+#define ORC_INSTRUCTION_FLAG_X2 (1<<0)
+#define ORC_INSTRUCTION_FLAG_X4 (1<<1)
+
+#define ORC_INSN_FLAG_INVARIANT (1<<2)
+#define ORC_INSN_FLAG_ADDED (1<<3)
+
 
 /**
  * OrcConstant:
@@ -327,7 +337,13 @@ struct _OrcFixup {
  */
 struct _OrcProgram {
   /*< private >*/
-  OrcInstruction insns[ORC_N_INSNS];
+  struct {
+    OrcStaticOpcode *opcode;
+    int dest_args[ORC_STATIC_OPCODE_N_DEST];
+    int src_args[ORC_STATIC_OPCODE_N_SRC];
+
+    OrcRule *rule;
+  } _unused[ORC_N_INSNS]; /* needed for ABI compatibility */
   int n_insns;
 
   OrcVariable vars[ORC_N_VARIABLES];
@@ -345,10 +361,17 @@ struct _OrcProgram {
   void *code_exec;
   int code_size;
 
+  OrcInstruction insns[ORC_N_INSNS];
+
   void *backup_func;
   int is_2d;
   int constant_n;
   int constant_m;
+
+  OrcCode *orccode;
+
+  /* Hide this here.  Belongs in a Parser object */
+  char *init_function;
 };
 
 /**
@@ -365,7 +388,6 @@ struct _OrcCompiler {
 
   OrcInstruction insns[ORC_N_INSNS];
   int n_insns;
-  int insn_flags[ORC_N_INSNS];
 
   OrcVariable vars[ORC_N_COMPILER_VARIABLES];
   int n_temp_vars;
@@ -402,6 +424,7 @@ struct _OrcCompiler {
   int gp_tmpreg;
 
   int insn_index;
+  int unroll_index;
   int need_mask_regs;
   int unroll_shift;
 
@@ -409,11 +432,14 @@ struct _OrcCompiler {
   int allow_gp_on_stack;
   int loop_counter;
   int size_region;
+  int has_iterator_opcode;
 
   int offset;
-};
+  int min_temp_reg;
+  int max_used_temp_reg;
 
-#define ORC_INSN_FLAG_INVARIANT 1
+  int insn_shift; /* used when emitting rules */
+};
 
 #define ORC_SRC_ARG(p,i,n) ((p)->vars[(i)->src_args[(n)]].alloc)
 #define ORC_DEST_ARG(p,i,n) ((p)->vars[(i)->dest_args[(n)]].alloc)
@@ -436,6 +462,7 @@ struct _OrcOpcodeExecutor {
 
   void *src_ptrs[ORC_STATIC_OPCODE_N_SRC];
   void *dest_ptrs[ORC_STATIC_OPCODE_N_DEST];
+  int shift;
 };
 
 /**
@@ -489,6 +516,25 @@ struct _OrcExecutorAlt {
 #define ORC_EXECUTOR_M_INDEX(ex) ((ex)->params[ORC_VAR_A2])
 #define ORC_EXECUTOR_TIME(ex) ((ex)->params[ORC_VAR_A3])
 
+struct _OrcCode {
+  /*< private >*/
+  OrcCompileResult result;
+  char *name;
+
+  /* for execution */
+  OrcExecutorFunc exec;
+  unsigned char *code;
+  int code_size;
+
+  /* for emulation */
+  int n_insns;
+  OrcInstruction *insns;
+  OrcVariable *vars;
+  int is_2d;
+  int constant_n;
+  int constant_m;
+};
+
 /**
  * OrcTarget:
  *
@@ -530,8 +576,13 @@ void orc_program_set_constant_n (OrcProgram *program, int n);
 void orc_program_set_constant_m (OrcProgram *program, int m);
 
 void orc_program_append (OrcProgram *p, const char *opcode, int arg0, int arg1, int arg2);
+void orc_program_append_2 (OrcProgram *program, const char *name,
+    unsigned int flags, int arg0, int arg1, int arg2, int arg3);
 void orc_program_append_str (OrcProgram *p, const char *opcode,
     const char * arg0, const char * arg1, const char * arg2);
+void orc_program_append_str_2 (OrcProgram *program, const char *name,
+    unsigned int flags, const char *arg1, const char *arg2, const char *arg3,
+    const char *arg4);
 void orc_program_append_ds (OrcProgram *program, const char *opcode, int arg0,
     int arg1);
 void orc_program_append_ds_str (OrcProgram *p, const char *opcode,
@@ -582,6 +633,7 @@ void orc_executor_set_n (OrcExecutor *ex, int n);
 void orc_executor_set_m (OrcExecutor *ex, int m);
 void orc_executor_emulate (OrcExecutor *ex);
 void orc_executor_run (OrcExecutor *ex);
+void orc_executor_run_backup (OrcExecutor *ex);
 
 OrcOpcodeSet *orc_opcode_set_get (const char *name);
 OrcOpcodeSet *orc_opcode_set_get_nth (int opcode_major);
@@ -604,6 +656,10 @@ int orc_program_allocate_register (OrcProgram *program, int is_data);
 void orc_compiler_allocate_codemem (OrcCompiler *compiler);
 int orc_compiler_label_new (OrcCompiler *compiler);
 int orc_compiler_get_constant (OrcCompiler *compiler, int size, int value);
+int orc_compiler_get_temp_constant (OrcCompiler *compiler, int size, int value);
+int orc_compiler_get_temp_reg (OrcCompiler *compiler);
+int orc_compiler_get_constant_reg (OrcCompiler *compiler);
+
 
 const char *orc_program_get_asm_code (OrcProgram *program);
 const char *orc_target_get_asm_preamble (const char *target);
@@ -620,6 +676,10 @@ int orc_program_get_max_array_size (OrcProgram *program);
 int orc_program_get_max_accumulator_size (OrcProgram *program);
 
 void orc_get_data_cache_sizes (int *level1, int *level2, int *level3);
+
+OrcCode * orc_code_new (void);
+void orc_code_free (OrcCode *code);
+
 
 #ifdef ORC_ENABLE_UNSTABLE_API
 

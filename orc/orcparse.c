@@ -59,6 +59,7 @@ orc_parse_full (const char *code, OrcProgram ***programs, char **log)
 {
   OrcParser _parser;
   OrcParser *parser = &_parser;
+  char *init_function = NULL;
 
   memset (parser, 0, sizeof(*parser));
 
@@ -135,6 +136,14 @@ orc_parse_full (const char *code, OrcProgram ***programs, char **log)
         parser->programs[parser->n_programs] = parser->program;
         parser->n_programs++;
         parser->creg_index = 1;
+      } else if (strcmp (token[0], ".init") == 0) {
+        if (init_function) free (init_function);
+        if (n_tokens < 2) {
+          orc_parse_log (parser, "error: line %d: .init without function name\n",
+              parser->line_number);
+        } else {
+          init_function = strdup (token[1]);
+        }
       } else if (strcmp (token[0], ".flags") == 0) {
         int i;
         for(i=1;i<n_tokens;i++){
@@ -188,40 +197,53 @@ orc_parse_full (const char *code, OrcProgram ***programs, char **log)
       }
     } else {
       OrcStaticOpcode *o;
+      unsigned int flags = 0;
+      int offset = 0;
 
-      o = get_opcode (parser, token[0]);
+      if (strcmp (token[0], "x4") == 0) {
+        flags |= ORC_INSTRUCTION_FLAG_X4;
+        offset = 1;
+      } else if (strcmp (token[0], "x2") == 0) {
+        flags |= ORC_INSTRUCTION_FLAG_X2;
+        offset = 1;
+      }
+
+      o = get_opcode (parser, token[offset]);
 
       if (o) {
         int n_args = opcode_n_args (o);
 
-        if (n_tokens != 1 + n_args) {
+        if (n_tokens != 1 + offset + n_args) {
           orc_parse_log (parser, "error: line %d: too %s arguments for %s (expected %d)\n",
-              parser->line_number, (n_tokens < 1+n_args) ? "few" : "many",
-              token[0], n_args);
+              parser->line_number, (n_tokens < 1+offset+n_args) ? "few" : "many",
+              token[offset], n_args);
         }
 
-        if (n_tokens == 4) {
+        if (n_tokens - offset == 5) {
+          orc_program_append_str_2 (parser->program, token[offset], flags,
+              token[offset+1], token[offset+2], token[offset+3], token[offset+4]);
+        } else if (n_tokens - offset == 4) {
           char *end;
-          int imm = strtol (token[3], &end, 0);
-          if (end != token[3]) {
+          int imm = strtol (token[offset + 3], &end, 0);
+          if (end != token[offset + 3]) {
             char creg[10];
             sprintf(creg, "c%d", parser->creg_index);
             parser->creg_index++;
             orc_program_add_constant (parser->program, 2, imm, creg);
-            orc_program_append_str (parser->program, token[0],
-                token[1], token[2], creg);
+            orc_program_append_str_2 (parser->program, token[offset], flags,
+                token[offset+1], token[offset+2], creg, NULL);
           } else {
-            orc_program_append_str (parser->program, token[0],
-                token[1], token[2], token[3]);
+            orc_program_append_str_2 (parser->program, token[offset], flags,
+                token[offset+1], token[offset+2], token[offset+3], NULL);
           }
         } else {
-          orc_program_append_ds_str (parser->program, token[0],
-              token[1], token[2]);
+          orc_program_append_str_2 (parser->program, token[offset], flags,
+              token[offset+1], token[offset+2], NULL, NULL);
         }
       } else {
         orc_parse_log (parser, "error: line %d: unknown opcode: %s\n",
             parser->line_number,
-            token[0]);
+            token[offset]);
       }
     }
   }
@@ -237,6 +259,7 @@ orc_parse_full (const char *code, OrcProgram ***programs, char **log)
   } else {
     free (parser->log);
   }
+  parser->programs[0]->init_function = init_function;
   *programs = parser->programs;
   return parser->n_programs;
 }
@@ -388,5 +411,11 @@ orc_parse_sanity_check (OrcParser *parser, OrcProgram *program)
 
   }
 
+}
+
+const char *
+orc_parse_get_init_function (OrcProgram *program)
+{
+  return program->init_function;
 }
 

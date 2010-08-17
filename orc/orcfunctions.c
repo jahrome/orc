@@ -45,8 +45,9 @@ typedef long orc_int64;
 typedef unsigned long orc_uint64;
 #endif
 #endif
-typedef union { orc_int32 i; float f; } orc_union32;
-typedef union { orc_int64 i; double f; } orc_union64;
+typedef union { orc_int16 i; orc_int8 x2[2]; } orc_union16;
+typedef union { orc_int32 i; float f; orc_int16 x2[2]; orc_int8 x4[4]; } orc_union32;
+typedef union { orc_int64 i; double f; orc_int32 x2[2]; orc_int16 x4[4]; } orc_union64;
 #endif
 
 void orc_memcpy (void * d1, const void * s1, int n);
@@ -102,13 +103,11 @@ orc_memcpy (void * d1, const void * s1, int n){
 
   for (i = 0; i < n; i++) {
     /* 0: loadb */
-    var32 = *ptr4;
+    var32 = ptr4[i];
     /* 1: copyb */
     var33 = var32;
     /* 2: storeb */
-    *ptr0 = var33;
-    ptr0++;
-    ptr4++;
+    ptr0[i] = var33;
   }
 
 }
@@ -129,13 +128,11 @@ _backup_orc_memcpy (OrcExecutor *ex)
 
   for (i = 0; i < n; i++) {
     /* 0: loadb */
-    var32 = *ptr4;
+    var32 = ptr4[i];
     /* 1: copyb */
     var33 = var32;
     /* 2: storeb */
-    *ptr0 = var33;
-    ptr0++;
-    ptr4++;
+    ptr0[i] = var33;
   }
 
 }
@@ -159,7 +156,7 @@ orc_memcpy (void * d1, const void * s1, int n)
       orc_program_add_destination (p, 1, "d1");
       orc_program_add_source (p, 1, "s1");
 
-      orc_program_append (p, "copyb", ORC_VAR_D1, ORC_VAR_S1, ORC_VAR_D1);
+      orc_program_append_2 (p, "copyb", 0, ORC_VAR_D1, ORC_VAR_S1, ORC_VAR_D1, ORC_VAR_D1);
 
       result = orc_program_compile (p);
     }
@@ -184,7 +181,6 @@ void
 orc_memset (void * d1, int p1, int n){
   int i;
   orc_int8 * ptr0;
-  const int var24 = p1;
   orc_int8 var32;
   orc_int8 var33;
 
@@ -192,12 +188,11 @@ orc_memset (void * d1, int p1, int n){
 
   for (i = 0; i < n; i++) {
     /* 0: loadpb */
-    var32 = var24;
+    var32 = p1;
     /* 1: copyb */
     var33 = var32;
     /* 2: storeb */
-    *ptr0 = var33;
-    ptr0++;
+    ptr0[i] = var33;
   }
 
 }
@@ -209,7 +204,6 @@ _backup_orc_memset (OrcExecutor *ex)
   int i;
   int n = ex->n;
   orc_int8 * ptr0;
-  const int var24 = ex->params[24];
   orc_int8 var32;
   orc_int8 var33;
 
@@ -217,12 +211,11 @@ _backup_orc_memset (OrcExecutor *ex)
 
   for (i = 0; i < n; i++) {
     /* 0: loadpb */
-    var32 = var24;
+    var32 = ex->params[24];
     /* 1: copyb */
     var33 = var32;
     /* 2: storeb */
-    *ptr0 = var33;
-    ptr0++;
+    ptr0[i] = var33;
   }
 
 }
@@ -246,7 +239,7 @@ orc_memset (void * d1, int p1, int n)
       orc_program_add_destination (p, 1, "d1");
       orc_program_add_parameter (p, 1, "p1");
 
-      orc_program_append (p, "copyb", ORC_VAR_D1, ORC_VAR_P1, ORC_VAR_D1);
+      orc_program_append_2 (p, "copyb", 0, ORC_VAR_D1, ORC_VAR_P1, ORC_VAR_D1, ORC_VAR_D1);
 
       result = orc_program_compile (p);
     }
@@ -263,4 +256,5 @@ orc_memset (void * d1, int p1, int n)
   func (ex);
 }
 #endif
+
 

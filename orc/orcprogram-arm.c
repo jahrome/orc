@@ -151,7 +151,7 @@ void
 orc_arm_load_constants_outer (OrcCompiler *compiler)
 {
   int i;
-  for(i=0;i<ORC_N_VARIABLES;i++){
+  for(i=0;i<ORC_N_COMPILER_VARIABLES;i++){
     if (compiler->vars[i].name == NULL) continue;
     switch (compiler->vars[i].vartype) {
       case ORC_VAR_TYPE_CONST:
@@ -179,7 +179,7 @@ orc_arm_load_constants_outer (OrcCompiler *compiler)
     OrcStaticOpcode *opcode = insn->opcode;
     OrcRule *rule;
 
-    if (!(compiler->insn_flags[i] & ORC_INSN_FLAG_INVARIANT)) continue;
+    if (!(insn->flags & ORC_INSN_FLAG_INVARIANT)) continue;
 
     ORC_ASM_CODE(compiler,"# %d: %s\n", i, insn->opcode->name);
 
@@ -196,7 +196,7 @@ void
 orc_arm_load_constants_inner (OrcCompiler *compiler)
 {
   int i;
-  for(i=0;i<ORC_N_VARIABLES;i++){
+  for(i=0;i<ORC_N_COMPILER_VARIABLES;i++){
     if (compiler->vars[i].name == NULL) continue;
     switch (compiler->vars[i].vartype) {
       case ORC_VAR_TYPE_CONST:
@@ -368,7 +368,7 @@ orc_arm_emit_loop (OrcCompiler *compiler)
     insn = compiler->insns + j;
     opcode = insn->opcode;
 
-    if (compiler->insn_flags[j] & ORC_INSN_FLAG_INVARIANT) continue;
+    if (insn->flags & ORC_INSN_FLAG_INVARIANT) continue;
 
     orc_compiler_append_code(compiler,"# %d: %s", j, insn->opcode->name);
 
@@ -431,7 +431,7 @@ orc_arm_emit_loop (OrcCompiler *compiler)
     }
   }
 
-  for(k=0;k<ORC_N_VARIABLES;k++){
+  for(k=0;k<ORC_N_COMPILER_VARIABLES;k++){
     if (compiler->vars[k].name == NULL) continue;
     if (compiler->vars[k].vartype == ORC_VAR_TYPE_SRC ||
         compiler->vars[k].vartype == ORC_VAR_TYPE_DEST) {
@@ -455,7 +455,7 @@ arm_add_strides (OrcCompiler *compiler)
 {
   int i;
 
-  for(i=0;i<ORC_N_VARIABLES;i++){
+  for(i=0;i<ORC_N_COMPILER_VARIABLES;i++){
     if (compiler->vars[i].name == NULL) continue;
     switch (compiler->vars[i].vartype) {
       case ORC_VAR_TYPE_CONST:
