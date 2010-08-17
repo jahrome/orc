@@ -23,6 +23,7 @@ LOCAL_SRC_FILES:= \
 	orcprogram-c.c \
 	orcrule.c \
 	orcrules-arm.c \
+	orccode.c \
 	orcutils.c
 
 LOCAL_SHARED_LIBRARIES := libm
